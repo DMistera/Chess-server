@@ -14,9 +14,9 @@
 #include <string.h>
 
 #include "game.h"
+#include "clientManager.h"
 
 #define PORT 1234
-#define MESSAGE_SIZE 5
 #define QUEUE_SIZE 5
 
 using namespace std;
@@ -26,9 +26,7 @@ struct ClientThreadData
 {
     int socket; // Client socket
     //Shared data:
-    int* waitingPlayer; // Pointer to socked id of the client waiting in a lobby
-    Game** tmpGame; // Temporary pointer to game object to pass game reference between clients
-    sem_t* waitingSemaphore; // Semaphore for watinging in a lobby.
+    ClientManager* manager;
 };
 
 struct MessageHandlerThreadData
@@ -36,75 +34,39 @@ struct MessageHandlerThreadData
     ClientThreadData* clientData;
     char* message;
     Game** game;
-    bool* ready;
 };
-
-void semWait(sem_t* sem) {
-    if(sem_wait(sem) == -1) {
-        cerr << "Semaphore wait failed " << endl;
-    }
-}
-
-void semPost(sem_t* sem) {
-    if(sem_post(sem) == -1) {
-        cerr << "Semaphore post failed " << endl;
-    }
-}
-
-void cancelWait(bool* flag, sem_t* sem) {
-    (*flag) = false;
-    semPost(sem);
-}
 
 void* messageHandler(void *t_data) {
     pthread_detach(pthread_self());
-
     MessageHandlerThreadData *data = (MessageHandlerThreadData*)t_data;
+    ClientManager* manager = data->clientData->manager;
+    int socket = data->clientData->socket;
     char* message = data->message;
     Game** gamePtr = data->game;
-    bool* ready = data->ready;
     char msgId = message[0];
-    int* waitingPlayer = data->clientData->waitingPlayer;
-    Game** tmpGame = data->clientData->tmpGame;
-    sem_t* semaphore = data->clientData->waitingSemaphore;
     switch (msgId)
     {
     case 'R':
         // If there is no player in a lobby, wait in a lobby
-        if(*(waitingPlayer) == 0) {
-            (*ready) = true;
+        if(manager->isLobbyEmpty()) {
             // Put current player to the lobby.
-            *(waitingPlayer) = data->clientData->socket;
-            cout << "Waiting player is now " << *(waitingPlayer) << endl;
-            //Wait for another player
-            semWait(semaphore);
-            // If a player has cancelled watiing, the ready flag will be false;
-            if(!*ready) {
-                *(waitingPlayer) = 0;
-                cout << "Player has canceled waiting: " << data->clientData->socket << endl;
-            }
-            else {
-                // Check if game got passed correctly for safety.
-                if(*tmpGame != nullptr) {
-                    *tmpGame = nullptr;
-                    *(gamePtr) = *(tmpGame);
-                    write((*(gamePtr))->getWhiteSocket(), "A", sizeof(char) * MESSAGE_SIZE);
-                }
-                else {
-                    cerr << "Game is not ready! (This should not happen)" << endl;
-                }
-            }
+            manager->subscribe(socket, [=](int opponent, function<void(Game*)> response) {
+                Game* game = new Game(socket, opponent);
+                *(gamePtr) = game;
+                response(game);
+            });
+            cout << "Waiting player is now " << socket << endl;
         }
         // if there is a player in a lobby, start a game with him
         else {
-            int opponent = *(waitingPlayer);
-            cout << "Opponent found: " << opponent << endl;
-            *(waitingPlayer) = 0;
-            *(gamePtr) = new Game(data->clientData->socket, opponent);
-            *(tmpGame) = *(data->game);
-            semPost(semaphore);
-            write(opponent, "A", sizeof(char) * MESSAGE_SIZE);
+            manager->call(socket, [=](Game* g) {
+                (*gamePtr) = g;
+                g->start();
+            });
         }
+        break;
+    case 'C':
+        manager->unsubscribe(socket);
         break;
     case 'M':
         //TODO
@@ -119,17 +81,15 @@ void *threadBehavior(void *t_data)
     ClientThreadData *th_data = (ClientThreadData*)t_data;
     Game* game = nullptr;
     cout << "New socket:" << th_data->socket << endl;
-    bool ready = false;
     while(1) {
-        char* readBuf = new char[MESSAGE_SIZE];
-        int readResult = read(th_data->socket, readBuf, sizeof(char) * MESSAGE_SIZE);
+        char* readBuf = new char[Consts::MESSAGE_SIZE];
+        int readResult = read(th_data->socket, readBuf, sizeof(char) * Consts::MESSAGE_SIZE);
         if(readResult > 0) {
             cout << "Message: " << readBuf << " from " << th_data->socket << endl;
             MessageHandlerThreadData* msgData = new MessageHandlerThreadData();
             msgData->clientData = th_data;
             msgData->message = readBuf;
             msgData->game = &game;
-            msgData->ready = &ready;
             pthread_t thread1;
             int create_result = pthread_create(&thread1, NULL, messageHandler, (void *)msgData);
             if (create_result){
@@ -138,11 +98,11 @@ void *threadBehavior(void *t_data)
             }
         }
         else if(readResult == 0) {
-            cancelWait(&ready, th_data->waitingSemaphore);
+            th_data->manager->unsubscribe(th_data->socket);
             break;
         }
         else if(readResult < -1) {
-            cancelWait(&ready, th_data->waitingSemaphore);
+            th_data->manager->unsubscribe(th_data->socket);
             cerr << "Error at reading: " << readResult << endl;
             break;
         }
@@ -185,13 +145,7 @@ int main() {
 
    cout << "Server is ready." << endl;
 
-   int waitingPlayer = 0;
-   Game* activeGame = nullptr;
-   sem_t waitingSemaphore;
-   if(sem_init(&waitingSemaphore, 0, 0) == -1) {
-        cerr << "Semaphore init error!" << endl;
-        exit(1);
-   }
+   ClientManager* clientManager = new ClientManager();
 
    while(1)
    {
@@ -204,9 +158,7 @@ int main() {
 
         ClientThreadData* t_data = new ClientThreadData();
         t_data->socket = connection_socket_descriptor;
-        t_data->waitingPlayer = &waitingPlayer;
-        t_data->tmpGame = &activeGame;
-        t_data->waitingSemaphore = &waitingSemaphore;
+        t_data->manager = clientManager;
 
         pthread_t thread1;
         int create_result = pthread_create(&thread1, NULL, threadBehavior, (void *)t_data);

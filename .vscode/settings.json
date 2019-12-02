@@ -3,6 +3,7 @@
         "iostream": "cpp",
         "xstring": "cpp",
         "xutility": "cpp",
-        "system_error": "cpp"
+        "system_error": "cpp",
+        "map": "cpp"
     }
 }
