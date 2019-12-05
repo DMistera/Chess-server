@@ -4,6 +4,7 @@
         "xstring": "cpp",
         "xutility": "cpp",
         "system_error": "cpp",
-        "map": "cpp"
+        "map": "cpp",
+        "string": "cpp"
     }
 }

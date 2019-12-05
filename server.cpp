@@ -69,10 +69,13 @@ void* messageHandler(void *t_data) {
         manager->unsubscribe(socket);
         break;
     case 'M':
-        //TODO
+        if(*gamePtr) {
+            (*gamePtr)->applyMove(socket, message);
+        }
     default:
         break;
     }
+    pthread_exit(NULL);
 }
 
 void *threadBehavior(void *t_data)
@@ -98,11 +101,21 @@ void *threadBehavior(void *t_data)
             }
         }
         else if(readResult == 0) {
-            th_data->manager->unsubscribe(th_data->socket);
+            if(game) {
+                game->end();
+            }
+            else {
+                th_data->manager->unsubscribe(th_data->socket);
+            }
             break;
         }
         else if(readResult < -1) {
-            th_data->manager->unsubscribe(th_data->socket);
+            if(game) {
+                game->end();
+            }
+            else {
+                th_data->manager->unsubscribe(th_data->socket);
+            }
             cerr << "Error at reading: " << readResult << endl;
             break;
         }
@@ -168,6 +181,7 @@ int main() {
         }
    }
 
+    cout << "End." << endl;
    close(server_socket_descriptor);
    return(0);
 }
