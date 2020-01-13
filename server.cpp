@@ -12,6 +12,7 @@
 #include <semaphore.h>
 #include <stdio.h>
 #include <string.h>
+#include <signal.h>
 
 #include "game.h"
 #include "clientManager.h"
@@ -87,29 +88,43 @@ void *threadBehavior(void *t_data)
     while(1) {
         char* readBuf = new char[Consts::MESSAGE_SIZE];
         int readResult = read(th_data->socket, readBuf, sizeof(char) * Consts::MESSAGE_SIZE);
-        if(readResult > 0) {
+        if(readResult > 0 && readResult <= (signed int)Consts::MESSAGE_SIZE) {
             cout << "Message: " << readBuf << " from " << th_data->socket << endl;
-            MessageHandlerThreadData* msgData = new MessageHandlerThreadData();
-            msgData->clientData = th_data;
-            msgData->message = readBuf;
-            msgData->game = &game;
-            pthread_t thread1;
-            int create_result = pthread_create(&thread1, NULL, messageHandler, (void *)msgData);
-            if (create_result){
-                cerr << "Błąd przy próbie utworzenia wątku, kod błędu: " << create_result << endl;
-                exit(-1);
-            }
+                ClientManager* manager = th_data->manager;
+                int socket = th_data->socket;
+                char msgId = readBuf[0];
+                switch (msgId)
+                {
+                case 'R':
+                    // If there is no player in a lobby, wait in a lobby
+                    if(manager->isLobbyEmpty()) {
+                        // Put current player to the lobby.
+                        manager->subscribe(socket, [&](int opponent, function<void(Game*)> response) {
+                            game = new Game(socket, opponent);
+                            response(game);
+                        });
+                        cout << "Waiting player is now " << socket << endl;
+                    }
+                    // if there is a player in a lobby, start a game with him
+                    else {
+                        manager->call(socket, [&](Game* g) {
+                            game = g;
+                            g->start();
+                        });
+                    }
+                    break;
+                case 'C':
+                    manager->unsubscribe(socket);
+                    break;
+                case 'M':
+                    if(game) {
+                        game->applyMove(socket, readBuf);
+                    }
+                default:
+                    break;
+                }
         }
-        else if(readResult == 0) {
-            if(game) {
-                game->end();
-            }
-            else {
-                th_data->manager->unsubscribe(th_data->socket);
-            }
-            break;
-        }
-        else if(readResult < -1) {
+        else if(readResult <= -1) {
             if(game) {
                 game->end();
             }
@@ -119,14 +134,29 @@ void *threadBehavior(void *t_data)
             cerr << "Error at reading: " << readResult << endl;
             break;
         }
+        else {
+            if(game) {
+                game->end();
+            }
+            else {
+                th_data->manager->unsubscribe(th_data->socket);
+            }
+            break;
+        }
     }
     cout << "Ending connection for socket:" << th_data->socket << endl;
     pthread_exit(NULL);
 }
 
+void signal_callback_handler(int signum){
 
+    cout << "Caught signal SIGPIPE " << signum << endl;
+}
 
 int main() {
+
+  signal(SIGPIPE, signal_callback_handler);
+
    char reuse_addr_val = 1;
    sockaddr_in server_address;
    //inicjalizacja gniazda serwera

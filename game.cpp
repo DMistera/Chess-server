@@ -41,7 +41,7 @@ void Game::applyMove(int socket, char* moveStr) {
         cout << "Client " << socket << " made a move: " << moveStr << endl;
         writeToSocket(opponent, moveStr);
         if(m_state.checkMate()) {
-            end();
+            m_ended = true;
         }
 
     } catch(std::exception e) {
@@ -51,10 +51,11 @@ void Game::applyMove(int socket, char* moveStr) {
 }
 
 void Game::writeToSocket(int socket, const char* moveStr) {
-    if(!m_ended) {
-        if(write(socket, moveStr, sizeof(char)*Consts::MESSAGE_SIZE) == - 1) {
-            cerr << "Failed to write to socket. Ending game." << endl;
-            m_ended = true;
-        }
+    if(write(socket, moveStr, sizeof(char)*Consts::MESSAGE_SIZE) == - 1) {
+        cerr << "Failed to write " << moveStr << " to socket" << socket << ". Ending game." << endl;
+        m_ended = true;
+    }
+    else {
+        cout << "Wrote " << moveStr << " to socket " << socket << endl;
     }
 }
