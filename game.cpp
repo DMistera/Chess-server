@@ -26,27 +26,29 @@ void Game::end() {
 }
 
 void Game::applyMove(int socket, char* moveStr) {
-    int opponent;
-    if(socket == m_whiteSocket) {
-        m_state.setActiveSide(Side::WHITE);
-        opponent = m_blackSocket;
-    }
-    else {
-        m_state.setActiveSide(Side::BLACK);
-        opponent = m_whiteSocket;
-    }
-    Move move = Move(moveStr);
-    try {
-        m_state.applyMove(move);
-        cout << "Client " << socket << " made a move: " << moveStr << endl;
-        writeToSocket(opponent, moveStr);
-        if(m_state.checkMate()) {
-            m_ended = true;
+    if(!m_ended) {
+        int opponent;
+        if(socket == m_whiteSocket) {
+            m_state.setActiveSide(Side::WHITE);
+            opponent = m_blackSocket;
         }
+        else {
+            m_state.setActiveSide(Side::BLACK);
+            opponent = m_whiteSocket;
+        }
+        Move move = Move(moveStr);
+        try {
+            m_state.applyMove(move);
+            cout << "Client " << socket << " made a move: " << moveStr << endl;
+            writeToSocket(opponent, moveStr);
+            if(m_state.checkMate()) {
+                m_ended = true;
+            }
 
-    } catch(std::exception e) {
-        cerr << "Client " << socket << " made a wrong move: " << moveStr << endl;
-        end();
+        } catch(std::exception e) {
+            cerr << "Client " << socket << " made a wrong move: " << moveStr << endl;
+            end();
+        }
     }
 }
 

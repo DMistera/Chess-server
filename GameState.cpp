@@ -37,6 +37,7 @@ GameState::GameState()
 
 GameState::~GameState()
 {
+	//m_pieces.clear();
 }
 
 void GameState::applyMove(Move& move)

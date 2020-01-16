@@ -30,63 +30,15 @@ struct ClientThreadData
     ClientManager* manager;
 };
 
-struct MessageHandlerThreadData
-{
-    ClientThreadData* clientData;
-    char* message;
-    Game** game;
-};
-
-void* messageHandler(void *t_data) {
-    pthread_detach(pthread_self());
-    MessageHandlerThreadData *data = (MessageHandlerThreadData*)t_data;
-    ClientManager* manager = data->clientData->manager;
-    int socket = data->clientData->socket;
-    char* message = data->message;
-    Game** gamePtr = data->game;
-    char msgId = message[0];
-    switch (msgId)
-    {
-    case 'R':
-        // If there is no player in a lobby, wait in a lobby
-        if(manager->isLobbyEmpty()) {
-            // Put current player to the lobby.
-            manager->subscribe(socket, [=](int opponent, function<void(Game*)> response) {
-                Game* game = new Game(socket, opponent);
-                *(gamePtr) = game;
-                response(game);
-            });
-            cout << "Waiting player is now " << socket << endl;
-        }
-        // if there is a player in a lobby, start a game with him
-        else {
-            manager->call(socket, [=](Game* g) {
-                (*gamePtr) = g;
-                g->start();
-            });
-        }
-        break;
-    case 'C':
-        manager->unsubscribe(socket);
-        break;
-    case 'M':
-        if(*gamePtr) {
-            (*gamePtr)->applyMove(socket, message);
-        }
-    default:
-        break;
-    }
-    pthread_exit(NULL);
-}
-
 void *threadBehavior(void *t_data)
 {
     pthread_detach(pthread_self());
     ClientThreadData *th_data = (ClientThreadData*)t_data;
     Game* game = nullptr;
     cout << "New socket:" << th_data->socket << endl;
+    char* readBuf;
     while(1) {
-        char* readBuf = new char[Consts::MESSAGE_SIZE];
+        readBuf = new char[Consts::MESSAGE_SIZE];
         int readResult = read(th_data->socket, readBuf, sizeof(char) * Consts::MESSAGE_SIZE);
         if(readResult > 0 && readResult <= (signed int)Consts::MESSAGE_SIZE) {
             cout << "Message: " << readBuf << " from " << th_data->socket << endl;
@@ -120,6 +72,7 @@ void *threadBehavior(void *t_data)
                     if(game) {
                         game->applyMove(socket, readBuf);
                     }
+                    break;
                 default:
                     break;
                 }
@@ -145,6 +98,8 @@ void *threadBehavior(void *t_data)
         }
     }
     cout << "Ending connection for socket:" << th_data->socket << endl;
+    delete[] readBuf;
+    delete th_data;
     pthread_exit(NULL);
 }
 
@@ -213,5 +168,6 @@ int main() {
 
     cout << "End." << endl;
    close(server_socket_descriptor);
+   delete clientManager;
    return(0);
 }
