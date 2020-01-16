@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <signal.h>
+#include <memory>
 
 #include "game.h"
 #include "clientManager.h"
@@ -34,7 +35,7 @@ void *threadBehavior(void *t_data)
 {
     pthread_detach(pthread_self());
     ClientThreadData *th_data = (ClientThreadData*)t_data;
-    Game* game = nullptr;
+    shared_ptr<Game> game;
     cout << "New socket:" << th_data->socket << endl;
     char* readBuf;
     while(1) {
@@ -51,15 +52,15 @@ void *threadBehavior(void *t_data)
                     // If there is no player in a lobby, wait in a lobby
                     if(manager->isLobbyEmpty()) {
                         // Put current player to the lobby.
-                        manager->subscribe(socket, [&](int opponent, function<void(Game*)> response) {
-                            game = new Game(socket, opponent);
+                        manager->subscribe(socket, [&](int opponent, function<void(shared_ptr<Game>)> response) {
+                            game = make_shared<Game>(socket, opponent);
                             response(game);
                         });
                         cout << "Waiting player is now " << socket << endl;
                     }
                     // if there is a player in a lobby, start a game with him
                     else {
-                        manager->call(socket, [&](Game* g) {
+                        manager->call(socket, [&](shared_ptr<Game> g) {
                             game = g;
                             g->start();
                         });
