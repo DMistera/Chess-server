@@ -37,9 +37,8 @@ void *threadBehavior(void *t_data)
     ClientThreadData *th_data = (ClientThreadData*)t_data;
     shared_ptr<Game> game;
     cout << "New socket:" << th_data->socket << endl;
-    char* readBuf;
+    char* readBuf = new char[Consts::MESSAGE_SIZE];
     while(1) {
-        readBuf = new char[Consts::MESSAGE_SIZE];
         int readResult = read(th_data->socket, readBuf, sizeof(char) * Consts::MESSAGE_SIZE);
         if(readResult > 0 && readResult <= (signed int)Consts::MESSAGE_SIZE) {
             cout << "Message: " << readBuf << " from " << th_data->socket << endl;

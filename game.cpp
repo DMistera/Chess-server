@@ -53,11 +53,15 @@ void Game::applyMove(int socket, char* moveStr) {
 }
 
 void Game::writeToSocket(int socket, const char* moveStr) {
-    if(write(socket, moveStr, sizeof(char)*Consts::MESSAGE_SIZE) == - 1) {
-        cerr << "Failed to write " << moveStr << " to socket" << socket << ". Ending game." << endl;
-        m_ended = true;
-    }
-    else {
-        cout << "Wrote " << moveStr << " to socket " << socket << endl;
+    unsigned int count = 0;
+    while(count < Consts::MESSAGE_SIZE) {
+        if((count = write(socket, &moveStr[count], sizeof(char)*(Consts::MESSAGE_SIZE - count))) < 0) {
+            cerr << "Failed to write " << moveStr << " to socket" << socket << ". Ending game." << endl;
+            m_ended = true;
+            break;
+        }
+        else {
+            cout << "Wrote " << moveStr << " to socket " << socket << endl;
+        }
     }
 }
